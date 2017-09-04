@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # load_model.py	
 import mxnet as mx
 import numpy as np
@@ -84,11 +86,25 @@ class ImagenetModel(object):
             arr = np.c_[arr, 255*np.ones((len(arr),1), np.uint8)]
         return Image.frombuffer(mode, size, arr.tostring(), 'raw', mode, 0, 1)
 
+    def draw_rotated_text(self, image, text, position, angle, font, fill=(255,255,255)):
+        # Get rendered font width and height.
+        draw = ImageDraw.Draw(image)
+        width, height = draw.textsize(text, font=font)
+        # Create a new image with transparent background to store the text.
+        textimage = Image.new('RGBA', (width, height), (0,0,0,0))
+        # Render the text.
+        textdraw = ImageDraw.Draw(textimage)
+        textdraw.text((0,0), text, font=font, fill=fill)
+        # Rotate the text image.
+        rotated = textimage.rotate(angle, expand=1)
+        # Paste the text into the image, using it as a mask for transparency.
+        image.paste(rotated, position, rotated)
+
 
     """
     Takes in an image, reshapes it, and runs it through the loaded MXNet graph for inference returning the N top labels from the softmax
     """
-    def predict_from_file(self, filename, reshape=(224, 224), N=5):
+    def predict_from_file(self, filename, reshape=(320, 240), N=5):
 
         topN = []
 
@@ -115,7 +131,7 @@ class ImagenetModel(object):
             topN.append((prob[i], self.synsets[i]))
         return topN
 
-    def predict_from_mem(self, img, reshape=(224, 224), N=5):
+    def predict_from_mem(self, img, reshape=(320, 240), N=5):
 
         topN = []
 
@@ -135,11 +151,25 @@ class ImagenetModel(object):
         prob = self.mod.get_outputs()[0].asnumpy()
         prob = np.squeeze(prob)
 
+        font = ImageFont.truetype("font3.ttf", 16)
+        ii=0
         # Extract the top N predictions from the softmax output
         a = np.argsort(prob)[::-1]
+        #print("test:{}".format(a))
         for i in a[0:N]:
-            print('probability=%f, class=%s' %(prob[i], self.synsets[i]))
-            topN.append((prob[i], self.synsets[i]))
+            nameObjects = self.synsets[i][10:]
+            print('probability=%f, class=%s' %(prob[i], nameObjects))
+
+            locY = 0 + 25*ii
+
+            if(ii<=4):
+                ratio = int(float(prob[i]) * 100)
+                txtDisplay = ("{}% {}".format(ratio, nameObjects))
+                self.draw_rotated_text(disp.buffer, txtDisplay.decode('utf-8'), (locY,0), 90, font, (252, 6, 6))
+
+            topN.append((prob[i], nameObjects))
+            ii += 1
+
         return topN
 
 
@@ -151,9 +181,11 @@ class ImagenetModel(object):
 
         if self.camera is None:
             self.camera = picamera.PiCamera()
-            self.camera.rotation = 180
-            self.camera.resolution = (640, 480)
+            self.camera.rotation = 0
+            self.camera.resolution = (320, 240)
             self.camera.framerate = 24
+            self.camera.hflip = True
+            self.camera.vflip = True
 
         self.camera.capture(stream, format='jpeg')
         stream.seek(0)
@@ -185,7 +217,7 @@ if __name__ == "__main__":
     print "predicting on "+args.img
 
     #font = ImageFont.load_default()
-    font = ImageFont.truetype("font1.ttf", 18)
+    #font = ImageFont.truetype("font1.ttf", 18)
 
     if args.img == "cam":
         while True:
